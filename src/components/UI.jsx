@@ -1,11 +1,25 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useChat } from "../hooks/useChat";
 
 export const UI = ({ hidden, ...props }) => {
   const input = useRef();
-  const { chat, loading, cameraZoomed, setCameraZoomed, message } = useChat();
+  const { chat, loading, cameraZoomed, setCameraZoomed, message, onMessagePlayed } = useChat();
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
+
+  // Stop listening when avatar starts speaking
+  useEffect(() => {
+    if (message && listening) {
+      stopListening();
+    }
+  }, [message, listening]);
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setListening(false);
+  };
 
   const startListening = () => {
     const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
@@ -27,15 +41,18 @@ export const UI = ({ hidden, ...props }) => {
     recog.onresult = (e) => {
       const transcript = e.results[e.results.length - 1][0].transcript.trim();
       console.log("🎙️ Transcript:", transcript);
+      
+      // Stop listening immediately after getting a result
+      setListening(false);
+      recog.stop();
+      
+      // Send the message
       chat(transcript);
     };
   
     recog.onend = () => {
       console.log("🎙️ Reconnaissance terminée.");
-      if (listening) {
-        console.log("🎙️ Relance automatique…");
-        recog.start();
-      }
+      setListening(false);
     };
   
     recog.onerror = (err) => {
@@ -47,8 +64,6 @@ export const UI = ({ hidden, ...props }) => {
     setListening(true);
     recog.start();
   };
-  
-  
 
   const sendMessage = () => {
     const text = input.current.value.trim();
@@ -59,6 +74,9 @@ export const UI = ({ hidden, ...props }) => {
   };
 
   if (hidden) return null;
+
+  // Button should be enabled when not loading, not speaking (no message), and not currently listening
+  const canStartListening = !loading && !message && !listening;
 
   return (
     <>
@@ -81,7 +99,7 @@ export const UI = ({ hidden, ...props }) => {
             onClick={() => setCameraZoomed(!cameraZoomed)}
             className="bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md"
           >
-                       {cameraZoomed ? (
+            {cameraZoomed ? (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -117,7 +135,7 @@ export const UI = ({ hidden, ...props }) => {
             onClick={() => document.body.classList.toggle("greenScreen")}
             className="bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md"
           >
-          <svg
+            <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -149,7 +167,7 @@ export const UI = ({ hidden, ...props }) => {
             onClick={sendMessage}
             className={`
               bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 px-6 
-              font-semibold uppercase rounded-md ${loading||message?"opacity-30 cursor-not-allowed":""}
+              font-semibold uppercase rounded-md ${loading || message ? "opacity-30 cursor-not-allowed" : ""}
             `}
           >
             Send
@@ -157,15 +175,19 @@ export const UI = ({ hidden, ...props }) => {
 
           {/* Bouton micro */}
           <button
-            onClick={startListening}
-            // disabled={listening || loading || message}
-            disabled={listening || loading}
+            onClick={listening ? stopListening : startListening}
+            disabled={!canStartListening && !listening}
             className={`
-              bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md
-              ${listening?"bg-gray-400 cursor-wait":""}
+              text-white p-4 rounded-md font-medium
+              ${listening 
+                ? "bg-red-500 hover:bg-red-600" 
+                : canStartListening 
+                  ? "bg-chaptal-green hover:bg-chaptal-green-dark" 
+                  : "bg-gray-400 cursor-not-allowed opacity-50"
+              }
             `}
           >
-            {listening ? "🎙️ ..." : "🎙️ Parlez"}
+            {listening ? "🛑 Stop" : canStartListening ? "🎙️ Parlez" : "🎙️ Attendez..."}
           </button>
         </div>
       </div>
