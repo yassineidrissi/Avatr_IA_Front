@@ -1,25 +1,70 @@
-import { useRef } from "react";
+import { useState, useRef } from "react";
 import { useChat } from "../hooks/useChat";
 
 export const UI = ({ hidden, ...props }) => {
   const input = useRef();
   const { chat, loading, cameraZoomed, setCameraZoomed, message } = useChat();
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  const startListening = () => {
+    const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
+    if (!isChrome) {
+      alert("⚠️ L'option 'Parlez' fonctionne uniquement sur Google Chrome.");
+      return;
+    }
+  
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return alert("❌ Votre navigateur ne supporte pas la reconnaissance vocale.");
+  
+    const recog = new SR();
+  
+    recog.continuous = true;
+    recog.interimResults = false;
+    recog.maxAlternatives = 1;
+    recog.lang = "fr-FR";
+  
+    recog.onresult = (e) => {
+      const transcript = e.results[e.results.length - 1][0].transcript.trim();
+      console.log("🎙️ Transcript:", transcript);
+      chat(transcript);
+    };
+  
+    recog.onend = () => {
+      console.log("🎙️ Reconnaissance terminée.");
+      if (listening) {
+        console.log("🎙️ Relance automatique…");
+        recog.start();
+      }
+    };
+  
+    recog.onerror = (err) => {
+      console.error("Speech API error:", err);
+      setListening(false);
+    };
+  
+    recognitionRef.current = recog;
+    setListening(true);
+    recog.start();
+  };
+  
+  
 
   const sendMessage = () => {
-    const text = input.current.value;
-    if (!loading && !message) {
+    const text = input.current.value.trim();
+    if (!loading && !message && text) {
       chat(text);
       input.current.value = "";
     }
   };
-  if (hidden) {
-    return null;
-  }
+
+  if (hidden) return null;
 
   return (
     <>
       <div className="fixed top-0 left-0 right-0 bottom-0 z-10 flex justify-between p-4 flex-col pointer-events-none">
-      <div className="self-start backdrop-blur-md bg-white bg-opacity-50 p-4 rounded-lg flex items-center gap-2">
+        {/* En-tête Fondation */}
+        <div className="self-start backdrop-blur-md bg-white bg-opacity-50 p-4 rounded-lg flex items-center gap-2">
           <img
             src="images/logo-chaptal.png"
             alt="Fondation Léonie Chaptal"
@@ -29,12 +74,14 @@ export const UI = ({ hidden, ...props }) => {
             Fondation Léonie Chaptal
           </span>
         </div>
-        <div className="w-full flex flex-col items-end justify-center gap-4">
+
+        {/* Boutons auxiliaires */}
+        <div className="w-full flex flex-col items-end justify-center gap-4 pointer-events-auto">
           <button
             onClick={() => setCameraZoomed(!cameraZoomed)}
-            className="pointer-events-auto bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md"
+            className="bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md"
           >
-            {cameraZoomed ? (
+                       {cameraZoomed ? (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -67,17 +114,10 @@ export const UI = ({ hidden, ...props }) => {
             )}
           </button>
           <button
-            onClick={() => {
-              const body = document.querySelector("body");
-              if (body.classList.contains("greenScreen")) {
-                body.classList.remove("greenScreen");
-              } else {
-                body.classList.add("greenScreen");
-              }
-            }}
-            className="pointer-events-auto : bg-chaptal-green hover:bg-chaptal-green-dark text-white text-white p-4 rounded-md"
+            onClick={() => document.body.classList.toggle("greenScreen")}
+            className="bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md"
           >
-            <svg
+          <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -92,26 +132,40 @@ export const UI = ({ hidden, ...props }) => {
             </svg>
           </button>
         </div>
+
+        {/* Zone input + reconnaissance vocale */}
         <div className="flex items-center gap-2 pointer-events-auto max-w-screen-sm w-full mx-auto">
           <input
-            className="w-full placeholder:text-gray-800 placeholder:italic p-4 rounded-md bg-opacity-50 bg-white backdrop-blur-md"
-            placeholder="Type a message..."
             ref={input}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                sendMessage();
-              }
-            }}
+            className="w-full placeholder:text-gray-800 placeholder:italic p-4 rounded-md bg-opacity-50 bg-white backdrop-blur-md"
+            placeholder="Tapez un message ou utilisez 🎙️"
+            onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            disabled={loading || message}
           />
+
+          {/* Bouton envoi texte */}
           <button
             disabled={loading || message}
             onClick={sendMessage}
             className={`
-              bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 px-10 
-              font-semibold uppercase rounded-md ${loading || message ? "cursor-not-allowed opacity-30" : ""}
+              bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 px-6 
+              font-semibold uppercase rounded-md ${loading||message?"opacity-30 cursor-not-allowed":""}
             `}
           >
             Send
+          </button>
+
+          {/* Bouton micro */}
+          <button
+            onClick={startListening}
+            // disabled={listening || loading || message}
+            disabled={listening || loading}
+            className={`
+              bg-chaptal-green hover:bg-chaptal-green-dark text-white p-4 rounded-md
+              ${listening?"bg-gray-400 cursor-wait":""}
+            `}
+          >
+            {listening ? "🎙️ ..." : "🎙️ Parlez"}
           </button>
         </div>
       </div>
